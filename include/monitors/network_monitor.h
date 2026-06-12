@@ -3,6 +3,7 @@
 
 #include "core/statistics_store.h"
 
+/* Collect aggregate non-loopback network counters from /proc/net/dev. */
 void network_monitor_collect(StatisticsStore* statisticsStore);
 
 #endif

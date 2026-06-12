@@ -6,6 +6,7 @@
 
 typedef struct DiskIoSample
 {
+    /* Linux diskstats sectors are normally 512-byte sectors for these counters. */
     unsigned long long sectorsRead;
     unsigned long long sectorsWritten;
     struct timespec timestamp;
@@ -13,6 +14,7 @@ typedef struct DiskIoSample
 
 static int should_skip_device(const char* deviceName)
 {
+    /* Loop and RAM disks add noise and do not represent physical storage throughput. */
     return strncmp(deviceName, "loop", 4) == 0 || strncmp(deviceName, "ram", 3) == 0;
 }
 
@@ -34,6 +36,7 @@ static int read_disk_io_sample(DiskIoSample* sample)
         unsigned long long deviceSectorsRead = 0;
         unsigned long long deviceSectorsWritten = 0;
 
+        /* Fields 6 and 10 in /proc/diskstats are sectors read and sectors written. */
         if (sscanf(line,
                    " %*u %*u %63s %*llu %*llu %llu %*llu %*llu %*llu %llu",
                    deviceName,
@@ -76,6 +79,7 @@ void disk_io_monitor_collect(StatisticsStore* statisticsStore)
 
         if (elapsedSeconds > 0.0)
         {
+            /* Convert sector deltas to bytes, then to MB/s. */
             readMBps = ((double)(currentSample.sectorsRead - previousSample.sectorsRead) * 512.0) /
                        (1024.0 * 1024.0 * elapsedSeconds);
             writeMBps = ((double)(currentSample.sectorsWritten - previousSample.sectorsWritten) * 512.0) /

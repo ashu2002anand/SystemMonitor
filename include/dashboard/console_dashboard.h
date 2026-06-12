@@ -3,6 +3,7 @@
 
 #include "core/system_stats.h"
 
+/* Render one terminal frame from a previously captured SystemStats snapshot. */
 void console_dashboard_render(const SystemStats* stats);
 
 #endif

@@ -3,6 +3,7 @@
 
 #include "core/statistics_store.h"
 
+/* Collect root filesystem capacity with statvfs("/"), then update the shared store. */
 void disk_monitor_collect(StatisticsStore* statisticsStore);
 
 #endif

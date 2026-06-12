@@ -6,12 +6,14 @@
 
 typedef struct CpuSample
 {
+    /* Idle and total jiffies from /proc/stat. Usage is calculated from sample deltas. */
     unsigned long long idle;
     unsigned long long total;
 } CpuSample;
 
 typedef struct CoreIdentity
 {
+    /* Unique physical-id/core-id pairs represent physical cores on most Linux systems. */
     int physicalId;
     int coreId;
 } CoreIdentity;
@@ -33,6 +35,7 @@ static int read_cpu_sample(CpuSample* sample)
         return 0;
     }
 
+    /* The first "cpu" line is aggregate CPU time across all logical processors. */
     if (fscanf(file,
                "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
                &user,
@@ -50,6 +53,7 @@ static int read_cpu_sample(CpuSample* sample)
 
     fclose(file);
 
+    /* Treat iowait as idle time for user-visible CPU utilization. */
     sample->idle = idle + iowait;
     sample->total = user + nice + system + idle + iowait + irq + softirq + steal;
     return 1;
@@ -146,6 +150,7 @@ static unsigned int count_physical_cores(void)
             parse_cpuinfo_value(line, "cpu cores", &fallbackCpuCores);
         }
 
+        /* A blank line ends one logical processor section in /proc/cpuinfo. */
         if (line[0] == '\n')
         {
             if (physicalId >= 0 && coreId >= 0)
@@ -165,6 +170,7 @@ static unsigned int count_physical_cores(void)
 
     fclose(file);
 
+    /* Prefer unique physical/core IDs, then cpu cores, then logical processor count. */
     if (coreCount > 0)
     {
         return coreCount;
@@ -197,6 +203,8 @@ void cpu_monitor_collect(StatisticsStore* statisticsStore)
     {
         unsigned long long totalDelta = currentSample.total - previousSample.total;
         unsigned long long idleDelta = currentSample.idle - previousSample.idle;
+
+        /* First real percentage appears on the second sample because CPU is delta-based. */
         usagePercent = totalDelta == 0 ? 0.0 : ((double)(totalDelta - idleDelta) * 100.0) / (double)totalDelta;
     }
 

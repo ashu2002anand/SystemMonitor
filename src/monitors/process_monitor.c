@@ -8,6 +8,7 @@
 
 static int is_numeric_name(const char* name)
 {
+    /* Only numeric /proc entries represent process IDs. */
     while (*name != '\0')
     {
         if (!isdigit((unsigned char)*name))
@@ -38,6 +39,7 @@ static unsigned long long read_process_rss_kb(const char* pid)
     {
         unsigned long long value = 0;
 
+        /* VmRSS is resident memory, reported in kB by /proc/[pid]/status. */
         if (sscanf(line, "VmRSS: %llu kB", &value) == 1)
         {
             fclose(file);
@@ -76,6 +78,10 @@ static unsigned long long read_process_cpu_ticks(const char* pid, char* processN
 
     fclose(file);
 
+    /*
+     * /proc/[pid]/stat wraps the command name in parentheses. The name may contain
+     * spaces, so split around the final ')' before parsing numeric fields.
+     */
     openParen = strchr(line, '(');
     closeParen = strrchr(line, ')');
     if (openParen == NULL || closeParen == NULL || closeParen <= openParen)
@@ -87,6 +93,8 @@ static unsigned long long read_process_cpu_ticks(const char* pid, char* processN
     snprintf(processName, processNameSize, "%s", openParen + 1);
 
     fields = closeParen + 2;
+
+    /* utime and stime are accumulated user/system CPU ticks for this process. */
     if (sscanf(fields,
                "%*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %llu %llu",
                &utime,
@@ -126,6 +134,7 @@ void process_monitor_collect(StatisticsStore* statisticsStore)
 
         ++runningProcessCount;
 
+        /* Highest CPU process is based on accumulated CPU time, not instant CPU %. */
         cpuTicks = read_process_cpu_ticks(entry->d_name, processName, sizeof(processName));
         if (cpuTicks > highestCpuTicks)
         {
@@ -133,6 +142,7 @@ void process_monitor_collect(StatisticsStore* statisticsStore)
             snprintf(highestCpuProcess, sizeof(highestCpuProcess), "%s", processName);
         }
 
+        /* Highest memory process is based on resident set size. */
         rssKB = read_process_rss_kb(entry->d_name);
         if (rssKB > highestMemoryKB)
         {

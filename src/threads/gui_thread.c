@@ -11,7 +11,7 @@ void* gui_thread_run(void* parameter)
 
     while (atomic_load(context->running))
     {
-        /* Reserved for future GUI integration. */
+        /* Future GUI event loop will live here and read snapshots from the shared store. */
         sleep(1);
     }
 

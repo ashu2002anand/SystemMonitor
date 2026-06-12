@@ -18,11 +18,13 @@ void* collector_thread_run(void* parameter)
 
     while (atomic_load(context->running))
     {
+        /* Fast-changing metrics are refreshed every second. */
         cpu_monitor_collect(context->statisticsStore);
         memory_monitor_collect(context->statisticsStore);
         disk_io_monitor_collect(context->statisticsStore);
         network_monitor_collect(context->statisticsStore);
 
+        /* Slower and more expensive scans run every 5 seconds. */
         if (refreshCount % 5 == 0)
         {
             disk_monitor_collect(context->statisticsStore);

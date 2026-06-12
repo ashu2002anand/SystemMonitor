@@ -16,6 +16,7 @@ void memory_monitor_collect(StatisticsStore* statisticsStore)
         return;
     }
 
+    /* MemAvailable is the kernel's best estimate of memory available without swapping. */
     while (fscanf(file, "%63s %llu %*15s", label, &value) == 2)
     {
         if (strcmp(label, "MemTotal:") == 0)
@@ -34,5 +35,7 @@ void memory_monitor_collect(StatisticsStore* statisticsStore)
     }
 
     fclose(file);
+
+    /* /proc/meminfo reports kB; the dashboard stores and prints MB. */
     statistics_store_update_memory(statisticsStore, totalKB / 1024, availableKB / 1024);
 }

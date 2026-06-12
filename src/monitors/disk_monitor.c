@@ -15,6 +15,7 @@ void disk_monitor_collect(StatisticsStore* statisticsStore)
         return;
     }
 
+    /* f_bavail is free space available to unprivileged users, which is what users expect. */
     totalBytes = (uint64_t)fileSystem.f_blocks * (uint64_t)fileSystem.f_frsize;
     availableBytes = (uint64_t)fileSystem.f_bavail * (uint64_t)fileSystem.f_frsize;
 

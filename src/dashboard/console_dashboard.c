@@ -4,6 +4,7 @@
 
 void console_dashboard_render(const SystemStats* stats)
 {
+    /* ANSI escape sequence: clear the terminal and move the cursor to the top-left. */
     printf("\033[2J\033[H");
 
     printf("System Monitor\n");

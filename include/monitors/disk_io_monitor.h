@@ -3,6 +3,7 @@
 
 #include "core/statistics_store.h"
 
+/* Collect aggregate disk I/O throughput from /proc/diskstats deltas. */
 void disk_io_monitor_collect(StatisticsStore* statisticsStore);
 
 #endif

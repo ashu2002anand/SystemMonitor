@@ -5,6 +5,12 @@
 
 #include <stdatomic.h>
 
+/*
+ * Shared application context passed to worker threads.
+ *
+ * statisticsStore points to the central metric store.
+ * running is an atomic shutdown flag controlled by main signal handling.
+ */
 typedef struct AppContext
 {
     StatisticsStore* statisticsStore;

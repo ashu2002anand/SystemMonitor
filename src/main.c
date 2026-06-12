@@ -14,6 +14,8 @@ static atomic_bool gRunning = ATOMIC_VAR_INIT(1);
 static void handle_signal(int signalNumber)
 {
     (void)signalNumber;
+
+    /* Signal handlers should do minimal work; worker threads observe this flag and exit. */
     atomic_store(&gRunning, 0);
 }
 
@@ -32,9 +34,11 @@ int main(void)
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
+    /* All worker threads share the same store and shutdown flag. */
     context.statisticsStore = &statisticsStore;
     context.running = &gRunning;
 
+    /* Start each worker independently so startup failures can shut the app down cleanly. */
     if (pthread_create(&collectorThread, NULL, collector_thread_run, &context) == 0)
     {
         collectorStarted = 1;
@@ -80,6 +84,7 @@ int main(void)
         pthread_join(guiThread, NULL);
     }
 
+    /* Destroy the mutex after all threads have stopped using the statistics store. */
     statistics_store_destroy(&statisticsStore);
     return 0;
 }

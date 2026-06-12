@@ -6,6 +6,7 @@
 
 typedef struct NetworkSample
 {
+    /* Raw byte counters from /proc/net/dev plus a monotonic timestamp for rate math. */
     unsigned long long bytesReceived;
     unsigned long long bytesTransmitted;
     struct timespec timestamp;
@@ -32,9 +33,11 @@ static int read_network_sample(NetworkSample* sample)
 
         if (++lineNumber <= 2)
         {
+            /* The first two lines are headers, not interface rows. */
             continue;
         }
 
+        /* Ignore loopback so local IPC does not inflate user-visible network rates. */
         if (sscanf(line,
                    " %63[^:]: %llu %*llu %*llu %*llu %*llu %*llu %*llu %*llu %llu",
                    interfaceName,
@@ -77,6 +80,7 @@ void network_monitor_collect(StatisticsStore* statisticsStore)
 
         if (elapsedSeconds > 0.0)
         {
+            /* Convert byte deltas to MB/s over the elapsed sample window. */
             downloadMBps = ((double)(currentSample.bytesReceived - previousSample.bytesReceived)) /
                            (1024.0 * 1024.0 * elapsedSeconds);
             uploadMBps = ((double)(currentSample.bytesTransmitted - previousSample.bytesTransmitted)) /
