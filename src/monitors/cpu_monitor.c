@@ -18,6 +18,23 @@ typedef struct CoreIdentity
     int coreId;
 } CoreIdentity;
 
+/*
+ * read_cpu_sample() - Read CPU jiffies from /proc/stat aggregate line.
+ *
+ * Parses the first "cpu" line from /proc/stat (aggregate time across all processors).
+ * Extracts jiffies for user, nice, system, idle, iowait, irq, softirq, and steal times.
+ * Computes total jiffies and idle+iowait (treated as idle for user-visible utilization).
+ *
+ * @sample: Pointer to CpuSample struct to populate with idle and total jiffies.
+ *
+ * Return: 1 on success, 0 on failure (missing file or parse error).
+ *
+ * Implementation notes:
+ * - Iowait time is included in the idle calculation since users don't perceive waiting
+ *   for I/O as "busy" CPU time (the CPU is not executing user/system code).
+ * - Total is the sum of all eight time slices and represents jiffies since boot.
+ * - The caller uses sample deltas to compute CPU usage percentage between samples.
+ */
 static int read_cpu_sample(CpuSample* sample)
 {
     FILE* file = fopen("/proc/stat", "r");
@@ -59,6 +76,23 @@ static int read_cpu_sample(CpuSample* sample)
     return 1;
 }
 
+/*
+ * parse_cpuinfo_value() - Extract an integer value from a /proc/cpuinfo key:value line.
+ *
+ * Parses lines like "physical id    : 0" to extract the integer value after the colon.
+ * Used to extract physical_id, core_id, and cpu_cores fields from cpuinfo.
+ *
+ * @line: A single line from /proc/cpuinfo.
+ * @key: The field name to match (e.g., "physical id", "core id").
+ * @value: Pointer to int to populate with the parsed value.
+ *
+ * Return: 1 if the line contains the key and a valid integer was parsed, 0 otherwise.
+ *
+ * Implementation notes:
+ * - String comparison uses strncmp() to match the key up to its length.
+ * - Looks for a ':' separator and scans for an integer after it.
+ * - Returns 0 if the key is not found or if parsing fails, allowing caller to continue.
+ */
 static int parse_cpuinfo_value(const char* line, const char* key, int* value)
 {
     const char* separator = NULL;
@@ -77,6 +111,24 @@ static int parse_cpuinfo_value(const char* line, const char* key, int* value)
     return sscanf(separator + 1, " %d", value) == 1;
 }
 
+/*
+ * add_unique_core() - Add a physical core (physical_id, core_id pair) if not already tracked.
+ *
+ * Maintains a list of unique physical cores to avoid counting hyperthreads twice.
+ * On systems with physical_id and core_id fields, each unique pair represents one physical core.
+ *
+ * @cores: Array of CoreIdentity structures to store unique cores.
+ * @coreCount: Pointer to current count of unique cores in the array.
+ * @physicalId: Physical CPU ID from /proc/cpuinfo.
+ * @coreId: Core ID within the physical CPU from /proc/cpuinfo.
+ *
+ * Side effects: Increments coreCount if the core is new and array space is available.
+ *
+ * Implementation notes:
+ * - Checks if the (physicalId, coreId) pair already exists before adding.
+ * - Array size is limited to 1024 cores (sufficient for virtually all systems).
+ * - Duplicate pairs are silently ignored (returned without modifying the array).
+ */
 static void add_unique_core(CoreIdentity* cores, unsigned int* coreCount, int physicalId, int coreId)
 {
     for (unsigned int i = 0; i < *coreCount; ++i)
@@ -95,6 +147,19 @@ static void add_unique_core(CoreIdentity* cores, unsigned int* coreCount, int ph
     }
 }
 
+/*
+ * count_logical_processors_from_cpuinfo() - Count "processor" entries in /proc/cpuinfo.
+ *
+ * Scans /proc/cpuinfo and counts lines starting with "processor" to determine
+ * the number of logical processors (including hyperthreads).
+ *
+ * Return: Number of logical processors, or 0 if /proc/cpuinfo cannot be opened.
+ *
+ * Implementation notes:
+ * - Each logical processor gets its own section in /proc/cpuinfo with a "processor" line.
+ * - This count includes hyperthreads (logical cores that share physical resources).
+ * - Used as a fallback if physical core detection fails or as input to other functions.
+ */
 static unsigned int count_logical_processors_from_cpuinfo(void)
 {
     FILE* file = fopen("/proc/cpuinfo", "r");
@@ -118,6 +183,25 @@ static unsigned int count_logical_processors_from_cpuinfo(void)
     return processors;
 }
 
+/*
+ * count_physical_cores() - Determine the number of physical CPU cores.
+ *
+ * Attempts to count unique (physical_id, core_id) pairs from /proc/cpuinfo.
+ * Falls back to "cpu cores" field if pairs are unavailable, then logical processor count.
+ *
+ * Return: Number of physical cores (not hyperthreads), or 0 if all methods fail.
+ *
+ * Fallback strategy (priority order):
+ *   1. Unique (physical_id, core_id) pairs from /proc/cpuinfo (most accurate on modern systems).
+ *   2. "cpu cores" field per processor in /proc/cpuinfo (works on some systems).
+ *   3. Logical processor count (assumes no hyperthreading).
+ *
+ * Implementation notes:
+ * - Logical processors are grouped by blank lines in /proc/cpuinfo.
+ * - Tracks the most recent physical_id and core_id before each blank line.
+ * - Adds unique pairs to the cores array, excluding duplicates (from hyperthreads).
+ * - Many systems do not report physical IDs; fallback ensures coverage.
+ */
 static unsigned int count_physical_cores(void)
 {
     FILE* file = fopen("/proc/cpuinfo", "r");
@@ -184,6 +268,23 @@ static unsigned int count_physical_cores(void)
     return count_logical_processors_from_cpuinfo();
 }
 
+/*
+ * cpu_monitor_collect() - Main entry point. Collect CPU metrics and update the shared store.
+ *
+ * Reads the current CPU sample, calculates usage percentage if a previous sample exists,
+ * and updates the statistics store with CPU utilization and processor counts.
+ *
+ * @statisticsStore: Pointer to the shared statistics store to update.
+ *
+ * Implementation notes:
+ * - Static variables preserve the previous sample between calls for delta calculation.
+ * - First call sets hasPreviousSample flag; subsequent calls calculate actual percentage.
+ * - Initial CPU usage is shown as 0% because we have no baseline to compare against.
+ * - CPU usage % = (totalDelta - idleDelta) / totalDelta * 100.
+ * - Processor counts are retrieved fresh each call (relatively cheap operations).
+ * - Gracefully handles missing /proc files by returning early without updates.
+ * - Thread-safe update via statistics_store_update_cpu() which holds the mutex.
+ */
 void cpu_monitor_collect(StatisticsStore* statisticsStore)
 {
     static int hasPreviousSample = 0;
